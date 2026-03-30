@@ -10,13 +10,14 @@ class Task:
     title: str
     duration_minutes: int
     priority: str = "medium"
-    category: Optional[str] = None
+    assigned_pet: Optional[Pet] = None
 
 @dataclass
 class Pet:
     name: str
     species: str = "dog"
     age: Optional[float] = None  # years
+    owner: Optional[Owner] = None
 
 @dataclass
 class Owner:

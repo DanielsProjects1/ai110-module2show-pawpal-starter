@@ -5,12 +5,20 @@
 **a. Initial design**
 
 - Briefly describe your initial UML design.
+
+My UML diagram has6 classes in total. A pet class, owner, class, task class, ScheduleItem class, Scheduler class, and a ScheduleResult class. The Owner class owns a list of Pets, and the ScheduleItem class uses a Task and is then contained in the ScheduleResult class as part of a list of ScheduleItems. The Scheduler class generates a schedule for an owner based on tasks and the owners preferences.
+
 - What classes did you include, and what responsibilities did you assign to each?
 
 **b. Design changes**
 
 - Did your design change during implementation?
+
+Yes.
+
 - If yes, describe at least one change and why you made it.
+
+When I asked Copilot if it noticed any missing relationships or potential logic bottlenecks in pawpal_system.py, it pointed out that there was no association between a task and a pet in my skeleton. It also pointed out that although the Owner class had a list of pets to show which pets an owner had, there was no bidirectional relationship. So I asked Copilot to fix these things for me as well as remove the unnecessary Task.category attribute as well.
 
 ---
 

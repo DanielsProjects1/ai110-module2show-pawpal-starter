@@ -41,3 +41,16 @@ pip install -r requirements.txt
 5. Add tests to verify key behaviors.
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
+
+### Smart Scheduling
+
+Greedy Packing Details
+Explains the low-priority task optimization strategy:
+
+Collects unplanned low-priority tasks after main scheduling
+Sorts by duration ascending (first-fit principle)
+Attempts to insert each into remaining time slots
+Removes successfully scheduled tasks from unplanned list
+Complexity Analysis
+Time: O(n log n) for initial sort + O(m) for greedy where m = low-priority count
+Space: O(n) for scheduled items and unplanned list

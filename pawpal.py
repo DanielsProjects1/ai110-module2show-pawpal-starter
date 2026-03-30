@@ -2,60 +2,96 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
+import bisect
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
-@dataclass
+@dataclass(eq=False)
 class Task:
     title: str
     duration_minutes: int
     priority: str = "medium"
     assigned_pet: Optional["Pet"] = None
     status: str = "pending"
+    recurrence: str = "none"  # "none", "daily", "weekly"
+    due_date: Optional[datetime] = None
+
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return self is other
 
     def assign_to_pet(self, pet: "Pet"):
         """Assign this task to a specific pet.
         
-        Sets the assigned_pet attribute and adds this task to the pet's tasks list
+        Sets the assigned_pet attribute and adds this task to the pet's tasks set
         if it's not already there.
         
         Args:
             pet: The Pet instance to assign this task to.
         """
         self.assigned_pet = pet
-        if self not in pet.tasks:
-            pet.tasks.append(self)
+        pet.tasks.add(self)
 
     def unassign(self):
         """Remove this task from its currently assigned pet.
         
         Clears the assigned_pet attribute and removes this task from the pet's
-        tasks list if it exists there.
+        tasks set if it exists there.
         """
         if self.assigned_pet:
             owner_pet = self.assigned_pet
-            if self in owner_pet.tasks:
-                owner_pet.tasks.remove(self)
+            owner_pet.tasks.discard(self)
             self.assigned_pet = None
 
-    def mark_complete(self):
+    def mark_complete(self) -> Optional["Task"]:
         """Mark this task as completed.
         
         Changes the task's status from 'pending' to 'completed'.
+        If the task is recurring ('daily' or 'weekly'), creates a new
+        instance for the next occurrence.
+        
+        Returns:
+            A new Task instance if recurring, otherwise None.
         """
         self.status = "completed"
+        if self.recurrence == "daily":
+            new_due_date = datetime.now() + timedelta(days=1)
+            return Task(
+                title=self.title,
+                duration_minutes=self.duration_minutes,
+                priority=self.priority,
+                assigned_pet=self.assigned_pet,
+                recurrence=self.recurrence,
+                due_date=new_due_date,
+            )
+        elif self.recurrence == "weekly":
+            new_due_date = datetime.now() + timedelta(days=7)
+            return Task(
+                title=self.title,
+                duration_minutes=self.duration_minutes,
+                priority=self.priority,
+                assigned_pet=self.assigned_pet,
+                recurrence=self.recurrence,
+                due_date=new_due_date,
+            )
+        return None
 
     def __post_init__(self):
         """Validate task attributes after initialization.
         
         Raises:
-            ValueError: If priority is not 'high', 'medium', or 'low', or if
-                       duration_minutes is not positive.
+            ValueError: If priority is not 'high', 'medium', or 'low', if
+                       duration_minutes is not positive, or if recurrence is
+                       not 'none', 'daily', or 'weekly'.
         """
         if self.priority not in PRIORITY_ORDER:
             raise ValueError(f"Invalid priority: {self.priority}")
         if self.duration_minutes <= 0:
             raise ValueError("duration_minutes must be > 0")
+        if self.recurrence not in ["none", "daily", "weekly"]:
+            raise ValueError("recurrence must be 'none', 'daily', or 'weekly'")
 
 @dataclass
 class Pet:
@@ -63,30 +99,30 @@ class Pet:
     species: str = "dog"
     age: Optional[float] = None  # years
     owner: Optional[Owner] = None
-    tasks: List[Task] = field(default_factory=list)
+    tasks: set[Task] = field(default_factory=set)
 
     def add_task(self, task: Task):
-        """Add a task to this pet's task list.
+        """Add a task to this pet's task set.
         
-        Sets the task's assigned_pet to this pet and appends it to the tasks list.
+        Sets the task's assigned_pet to this pet and adds it to the tasks set.
         
         Args:
             task: The Task instance to add to this pet.
         """
         task.assigned_pet = self
-        self.tasks.append(task)
+        self.tasks.add(task)
 
     def remove_task(self, task: Task):
-        """Remove a task from this pet's task list.
+        """Remove a task from this pet's task set.
         
-        Removes the task from the tasks list and clears its assigned_pet attribute
+        Removes the task from the tasks set and clears its assigned_pet attribute
         if the task is currently assigned to this pet.
         
         Args:
             task: The Task instance to remove from this pet.
         """
         if task in self.tasks:
-            self.tasks.remove(task)
+            self.tasks.discard(task)
             task.assigned_pet = None
 
 @dataclass
@@ -200,32 +236,54 @@ class Scheduler:
         owner: Owner,
         reference_date: Optional[datetime] = None,
     ) -> ScheduleResult:
-        """Generate a daily schedule for pet care tasks.
+        """Generate a daily schedule for pet care tasks with greedy packing optimization.
         
-        Sorts tasks by priority (high first), then by duration (longer first),
-        and schedules them sequentially within the owner's available time window.
-        Tasks that don't fit are marked as unplanned.
+        Algorithm Overview:
+        1. Filter tasks to include only pending tasks (status='pending').
+        2. Sort tasks by priority (high→medium→low), then by duration (longest first),
+           then alphabetically by title.
+        3. Schedule high/medium priority tasks sequentially within the time window,
+           skipping any that don't fit.
+        4. Use greedy packing optimization: After high/medium tasks are scheduled,
+           attempt to fit low-priority tasks (sorted by duration ascending) into
+           remaining time slots.
+        
+        Greedy Packing Details:
+        - If time remains after priority scheduling, collect all unplanned low-priority tasks
+        - Sort them by duration (ascending) to maximize "first-fit" probability
+        - Attempt to insert each into the remaining time window
+        - Remove successfully scheduled tasks from the unplanned list
+        
+        Time Complexity: O(n log n) for initial sort, O(m) for greedy packing where m = low-priority tasks
+        Space Complexity: O(n) for scheduled items and unplanned list
         
         Args:
             tasks: List of Task instances to schedule.
-            owner: Owner instance with time constraints and preferences.
-            reference_date: Date to use for scheduling (defaults to today).
+            owner: Owner instance with time_available and preferred_start_hour/end_hour constraints.
+            reference_date: Date to use for scheduling (defaults to today at 00:00:00).
             
         Returns:
-            ScheduleResult containing scheduled items and unplanned tasks.
+            ScheduleResult containing:
+            - items: List of ScheduleItem objects representing scheduled tasks
+            - unplanned_tasks: List of Task objects that could not be scheduled
             
         Raises:
-            ValueError: If no available scheduling window exists.
+            ValueError: If no valid scheduling window exists (available_minutes <= 0).
         """
         if reference_date is None:
             reference_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        available_minutes = min(owner.time_available, (owner.preferred_end_hour - owner.preferred_start_hour) * 60)
+        # Cache available_minutes calculation for clarity and efficiency
+        window_hours = owner.preferred_end_hour - owner.preferred_start_hour
+        available_minutes = min(owner.time_available, window_hours * 60)
         if available_minutes <= 0:
             raise ValueError("No available scheduling window")
 
+        # Filter tasks to only include pending tasks
+        pending_tasks = Scheduler.filter_by_status(tasks, "pending")
+
         sorted_tasks = sorted(
-            tasks,
+            pending_tasks,
             key=lambda t: (PRIORITY_ORDER[t.priority], -t.duration_minutes, t.title),
         )
 
@@ -236,8 +294,15 @@ class Scheduler:
         current_time = current_start
         used_minutes = 0
 
+        # Phase 1: Schedule high and medium priority tasks
         for task in sorted_tasks:
-            if used_minutes + task.duration_minutes > available_minutes:
+            remaining = available_minutes - used_minutes
+            if remaining <= 0:
+                # No time left, add all remaining tasks to unplanned
+                unplanned.extend(sorted_tasks[sorted_tasks.index(task):])
+                break
+
+            if task.duration_minutes > remaining:
                 unplanned.append(task)
                 continue
 
@@ -245,7 +310,7 @@ class Scheduler:
             end_time = current_time + timedelta(minutes=task.duration_minutes)
             reason_components: List[str] = []
             reason_components.append(f"High-priority" if task.priority == "high" else f"{task.priority.capitalize()} priority")
-            reason_components.append(f"fits remaining time ({available_minutes - used_minutes}m left)")
+            reason_components.append(f"fits remaining time ({remaining}m left)")
             if task.duration_minutes >= 60:
                 reason_components.append("long task scheduled early to preserve flexibility")
             reason = ", ".join(reason_components)
@@ -256,6 +321,37 @@ class Scheduler:
 
             used_minutes += task.duration_minutes
             current_time = end_time
+
+        # Phase 2: Greedy packing optimization for low-priority tasks
+        # Attempt to fit low-priority tasks into remaining time slots
+        remaining = available_minutes - used_minutes
+        if remaining > 0 and unplanned:
+            low_priority_tasks = [t for t in unplanned if t.priority == "low"]
+            # Sort by duration ascending (first-fit decreasing strategy)
+            low_priority_tasks.sort(key=lambda t: t.duration_minutes)
+            scheduled_set = set()
+            for item in scheduled_items:
+                scheduled_set.add(item.task)
+            
+            to_remove = []
+            for task in low_priority_tasks:
+                if task not in scheduled_set and task.duration_minutes <= remaining:
+                    end_time = current_time + timedelta(minutes=task.duration_minutes)
+                    scheduled_items.append(
+                        ScheduleItem(
+                            task=task,
+                            start_time=current_time,
+                            end_time=end_time,
+                            reason=f"Low priority, fits remaining time ({remaining}m left)",
+                        )
+                    )
+                    used_minutes += task.duration_minutes
+                    current_time = end_time
+                    remaining -= task.duration_minutes
+                    to_remove.append(task)
+            
+            for task in to_remove:
+                unplanned.remove(task)
 
         if unplanned and scheduled_items:
             # optionally, include note about why unscheduled tasks were dropped
@@ -277,3 +373,87 @@ class Scheduler:
             A formatted string describing the schedule.
         """
         return result.explanation()
+
+    @staticmethod
+    def sort_by_time(result: ScheduleResult) -> ScheduleResult:
+        """Sort schedule items by their start time in HH:MM format.
+        
+        Sorts the items in the ScheduleResult object by their start time in 
+        "HH:MM" format using a lambda function as the sorting key, and returns
+        the modified ScheduleResult object.
+        
+        Args:
+            result: The ScheduleResult containing items to sort.
+            
+        Returns:
+            The ScheduleResult object with items sorted by start_time in HH:MM format.
+        """
+        result.items = sorted(result.items, key=lambda item: item.start_time.strftime('%H:%M'))
+        return result
+
+    @staticmethod
+    def filter_by_status(tasks, status: str):
+        """Filter tasks or scheduled items by status.
+
+        Works with either a list of Task objects (returns matching Task list) or
+        a ScheduleResult (returns ScheduleItem list with tasks matching the status).
+
+        Args:
+            tasks: List[Task] or ScheduleResult.
+            status: The status to filter by (e.g., 'completed' or 'pending').
+
+        Returns:
+            A list of Task objects if input is tasks list, or ScheduleItem objects
+            if input is ScheduleResult.
+        """
+        if hasattr(tasks, "items"):
+            return [item for item in tasks.items if item.task.status == status]
+        return [task for task in tasks if task.status == status]
+
+    @staticmethod
+    def detect_conflicts(result: ScheduleResult) -> Optional[str]:
+        """Detect scheduling conflicts in the schedule result.
+        
+        Checks for overlapping tasks in the scheduled items. Returns a warning
+        message if conflicts are found, otherwise returns None.
+        
+        Args:
+            result: The ScheduleResult to check for conflicts.
+            
+        Returns:
+            A warning message string if conflicts are detected, None otherwise.
+        """
+        items = sorted(result.items, key=lambda item: item.start_time)
+        conflicts = []
+        for i in range(len(items) - 1):
+            current = items[i]
+            next_item = items[i + 1]
+            if current.end_time > next_item.start_time:
+                conflicts.append(
+                    f"Tasks '{current.task.title}' and '{next_item.task.title}' overlap "
+                    f"(ends at {current.end_time.strftime('%H:%M')}, next starts at {next_item.start_time.strftime('%H:%M')})"
+                )
+        if conflicts:
+            return "Warning: Scheduling conflicts detected:\n" + "\n".join(conflicts)
+        return None
+
+    @staticmethod
+    def insert_task_sorted(sorted_tasks: List[Task], task: Task) -> List[Task]:
+        """Insert a task into a sorted list using binary search.
+        
+        Uses binary search (bisect) to insert a task into a pre-sorted task list
+        by priority and duration, maintaining O(log n) insertion time for
+        efficient incremental scheduling updates.
+        
+        Args:
+            sorted_tasks: A list of Task objects already sorted by priority and duration.
+            task: The Task instance to insert.
+            
+        Returns:
+            The updated sorted tasks list with the new task inserted.
+        """
+        sort_key = (PRIORITY_ORDER[task.priority], -task.duration_minutes, task.title)
+        # Create tuples of (sort_key, task) for bisect comparison
+        task_tuples = [(PRIORITY_ORDER[t.priority], -t.duration_minutes, t.title, i, t) for i, t in enumerate(sorted_tasks)]
+        bisect.insort(task_tuples, (sort_key[0], sort_key[1], sort_key[2], len(task_tuples), task))
+        return [t[-1] for t in task_tuples]

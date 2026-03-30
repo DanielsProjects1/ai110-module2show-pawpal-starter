@@ -32,7 +32,12 @@ When I asked Copilot if it noticed any missing relationships or potential logic 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
+
+Caches available_minutes calculation.
+
 - Why is that tradeoff reasonable for this scenario?
+
+Pne place to change if time logic evolves.
 
 ---
 

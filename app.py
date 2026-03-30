@@ -90,16 +90,41 @@ if st.button("Generate Daily Schedule"):
                 owner=st.session_state.owner,
                 reference_date=datetime.now()
             )
-            
+
+            # Sort final schedule by time (in-case tasks are not sequential after generation)
+            result = Scheduler.sort_by_time(result)
+
+            # Conflict detection warning
+            conflict_warn = Scheduler.detect_conflicts(result)
+
             st.success("✅ Schedule generated successfully!")
-            
-            # Display the schedule using the explanation method
+
+            # Display the schedule with a clear timeline
             st.markdown("### Daily Schedule")
-            st.code(result.explanation(), language="text")
-            
-            # Show summary
+            for item in result.items:
+                st.write(f"- **{item.task.title}** ({item.task.priority}, {item.task.duration_minutes}m) "
+                         f"{item.start_time.strftime('%H:%M')} - {item.end_time.strftime('%H:%M')} | {item.reason}"
+                         f"{' (pet: ' + item.task.assigned_pet.name + ')' if item.task.assigned_pet else ''}")
+
+            # Show summary and conflict warning
             st.markdown(f"**Summary:** {len(result.items)} tasks scheduled, {len(result.unplanned_tasks)} tasks left unplanned")
-            
+
+            if conflict_warn:
+                st.warning(conflict_warn)
+
+            # Show unplanned tasks and pending task count
+            if result.unplanned_tasks:
+                st.markdown("### Unplanned Tasks")
+                for task in result.unplanned_tasks:
+                    st.write(f"- {task.title} ({task.priority}, {task.duration_minutes}m)")
+
+            # Show pending tasks directly from scheduler filter
+            pending_items = Scheduler.filter_by_status(result, "pending")
+            if pending_items:
+                st.markdown("### Pending Schedule Items (post-filter)")
+                for item in pending_items:
+                    st.write(f"- {item.task.title} at {item.start_time.strftime('%H:%M')}")
+
         except ValueError as e:
             st.error(f"❌ Scheduling failed: {e}")
     else:

@@ -27,7 +27,12 @@ When I asked Copilot if it noticed any missing relationships or potential logic 
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
+
+Time was the constraint considered most in my Scheduler class.
+
 - How did you decide which constraints mattered most?
+
+I decided time mattered the most because to the user, that is probably the most important thing.
 
 **b. Tradeoffs**
 
@@ -75,10 +80,17 @@ I tested the programs sorting behavior, recurrence logic, conflict detection, ed
 
 - Why were these tests important?
 
+Because I used these tests to verify that the code the AI gave me works and will not crash the app when it's run.
+
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
+
+4 out of 5
+
 - What edge cases would you test next if you had more time?
+
+Duplicate pet names: Multiple pets with same name - should use unique IDs for hashing.
 
 ---
 
@@ -88,10 +100,16 @@ I tested the programs sorting behavior, recurrence logic, conflict detection, ed
 
 - What part of this project are you most satisfied with?
 
+Most of the code and suggestion Copilot gave me were helpful.
+
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
 
+I would redesign the app so that the user can see schedules for each individual pet that they own.
+
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+
+When designing systems with AI, it is much easier when you already have a clear idea of what your app looks like and you're at least familiar with how you want it to behave. The AI can give you suggestions along the way that you can either choose to implement or disregard.

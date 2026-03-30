@@ -54,3 +54,9 @@ Removes successfully scheduled tasks from unplanned list
 Complexity Analysis
 Time: O(n log n) for initial sort + O(m) for greedy where m = low-priority count
 Space: O(n) for scheduled items and unplanned list
+
+### Testing PawPal+
+
+I had the AI write tests that cover the programs sorting, recurrence logic, conflict detection, performance, and algorithms I had it write.
+My confidence level in the system's reliability is a 4 out of 5.
+

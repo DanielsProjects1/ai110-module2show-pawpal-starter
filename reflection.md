@@ -46,12 +46,22 @@ Pne place to change if time logic evolves.
 **a. How you used AI**
 
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
+
+I used Copilot to help me design, code and refactor the project.
+
 - What kinds of prompts or questions were most helpful?
+
+The most useful prompts were me just telling it what I wanted it to do.
 
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
+
+The AI wanted to remove the filter_by_status method in the Scheduler task for the detect_conflict method. I rejected this because the instruction for the project wanted me to keep the method.
+
 - How did you evaluate or verify what the AI suggested?
+
+By testing its suggestions before keeping them.
 
 ---
 
@@ -60,6 +70,9 @@ Pne place to change if time logic evolves.
 **a. What you tested**
 
 - What behaviors did you test?
+
+I tested the programs sorting behavior, recurrence logic, conflict detection, edge date handling, and greedy packing.
+
 - Why were these tests important?
 
 **b. Confidence**
